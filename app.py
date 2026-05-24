@@ -48,6 +48,7 @@ DB_PATH      = "qurban_arrohman.db"
 MASJID       = "Mushollah Ar Rohman"
 LOKASI       = "Perum BRI, Cepu"
 PREFIX_KUPON = f"QBN-{TAHUN}"
+KATEGORI_LIST = ["Shohibul Qurban", "Warga", "Panitia", "Lainnya"]
 
 # ═══════════════════════════════════════════════════════════════
 #  CSS
@@ -109,6 +110,49 @@ html,body,[class*="css"]{font-family:'Plus Jakarta Sans',sans-serif!important}
 
 #MainMenu,footer,header{visibility:hidden}
 .stButton>button{border-radius:8px!important;font-weight:600!important}
+
+/* ── FIX 2: Sidebar collapse/expand toggle button ── */
+[data-testid="collapsedControl"]{
+  background:#1565C0!important;
+  border-radius:0 8px 8px 0!important;
+  border:2px solid rgba(255,255,255,.4)!important;
+  color:white!important;
+  width:2rem!important;
+  display:flex!important;
+  align-items:center!important;
+  justify-content:center!important;
+}
+[data-testid="collapsedControl"]:hover{
+  background:#0D47A1!important;
+  border-color:white!important;
+}
+[data-testid="collapsedControl"] svg{stroke:white!important;fill:white!important}
+button[kind="header"]{
+  background:rgba(255,255,255,.15)!important;
+  border-radius:8px!important;
+  border:1px solid rgba(255,255,255,.3)!important;
+}
+button[kind="header"]:hover{background:rgba(255,255,255,.3)!important}
+button[kind="header"] svg{color:white!important;stroke:white!important}
+
+/* ── FIX 3: Logout button — jelas & mencolok ── */
+[data-testid="stSidebar"] .stButton>button{
+  background:rgba(255,255,255,.12)!important;
+  color:white!important;
+  border:2px solid rgba(255,255,255,.5)!important;
+  border-radius:10px!important;
+  font-weight:700!important;
+  padding:.5rem 1rem!important;
+  width:100%!important;
+  transition:all .2s!important;
+  text-align:center!important;
+}
+[data-testid="stSidebar"] .stButton>button:hover{
+  background:#D32F2F!important;
+  border-color:#FF5252!important;
+  transform:translateY(-1px)!important;
+  box-shadow:0 4px 12px rgba(0,0,0,.3)!important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -138,6 +182,7 @@ def init_db():
             no_hp      TEXT,
             alamat     TEXT,
             rt_rw      TEXT,
+            kategori   TEXT DEFAULT 'Warga',
             created_at TEXT DEFAULT (datetime('now','localtime'))
         );
         CREATE TABLE IF NOT EXISTS kupon (
@@ -163,6 +208,13 @@ def init_db():
             metode         TEXT DEFAULT 'manual'
         );
     """)
+    # ── Migrasi: tambah kolom kategori jika belum ada ──
+    try:
+        c.execute("ALTER TABLE penerima ADD COLUMN kategori TEXT DEFAULT 'Warga'")
+        conn.commit()
+    except Exception:
+        pass  # Kolom sudah ada
+
     pw = hashlib.sha256("admin123".encode()).hexdigest()
     c.execute("INSERT OR IGNORE INTO users (username,password,nama_lengkap,role) VALUES(?,?,?,?)",
               ("admin", pw, "Administrator", "admin"))
@@ -182,16 +234,16 @@ def db_login(username, password):
 def db_get_all_penerima():
     return pd.read_sql_query("SELECT * FROM penerima ORDER BY id", get_conn())
 
-def db_add_penerima(nama, no_hp, alamat, rt_rw):
+def db_add_penerima(nama, no_hp, alamat, rt_rw, kategori="Warga"):
     c = get_conn()
-    c.execute("INSERT INTO penerima(nama,no_hp,alamat,rt_rw) VALUES(?,?,?,?)",
-              (nama, no_hp, alamat, rt_rw))
+    c.execute("INSERT INTO penerima(nama,no_hp,alamat,rt_rw,kategori) VALUES(?,?,?,?,?)",
+              (nama, no_hp, alamat, rt_rw, kategori))
     c.commit()
 
-def db_update_penerima(pid, nama, no_hp, alamat, rt_rw):
+def db_update_penerima(pid, nama, no_hp, alamat, rt_rw, kategori="Warga"):
     c = get_conn()
-    c.execute("UPDATE penerima SET nama=?,no_hp=?,alamat=?,rt_rw=? WHERE id=?",
-              (nama, no_hp, alamat, rt_rw, pid))
+    c.execute("UPDATE penerima SET nama=?,no_hp=?,alamat=?,rt_rw=?,kategori=? WHERE id=?",
+              (nama, no_hp, alamat, rt_rw, kategori, pid))
     c.commit()
 
 def db_delete_penerima(pid):
@@ -216,7 +268,9 @@ def db_generate_all_kupon():
 
 def db_get_all_kupon():
     return pd.read_sql_query("""
-        SELECT k.id,k.id_kupon,p.nama AS penerima,p.no_hp,p.alamat,p.rt_rw,
+        SELECT k.id,k.id_kupon,p.nama AS penerima,
+               COALESCE(p.kategori,'Warga') AS kategori,
+               p.no_hp,p.alamat,p.rt_rw,
                k.status,k.created_at,k.diambil_at,k.diambil_oleh,k.catatan
         FROM kupon k JOIN penerima p ON k.penerima_id=p.id ORDER BY k.id
     """, get_conn())
@@ -560,8 +614,11 @@ def page_data_penerima():
             has = set(r[0] for r in get_conn().execute("SELECT penerima_id FROM kupon").fetchall())
             df["Kupon"] = df["id"].apply(lambda x:"✅" if x in has else "❌")
             st.markdown(f"**Total: {len(df)} penerima**")
-            st.dataframe(df[["id","nama","no_hp","alamat","rt_rw","Kupon","created_at"]].rename(
-                columns={"id":"No","nama":"Nama","no_hp":"No. HP",
+            # Pastikan kolom kategori ada (backward compat)
+            if "kategori" not in df.columns:
+                df["kategori"] = "Warga"
+            st.dataframe(df[["id","nama","kategori","no_hp","alamat","rt_rw","Kupon","created_at"]].rename(
+                columns={"id":"No","nama":"Nama","kategori":"Kategori","no_hp":"No. HP",
                          "alamat":"Alamat","rt_rw":"RT/RW","created_at":"Terdaftar"}
             ), use_container_width=True, hide_index=True)
 
@@ -569,17 +626,32 @@ def page_data_penerima():
             opts = {f"#{r['id']} – {r['nama']}":r["id"] for _,r in df.iterrows()}
             sel  = st.selectbox("Pilih penerima",list(opts.keys()))
             pid  = opts[sel]; row = df[df["id"]==pid].iloc[0]
+            # Backward compat: kolom kategori mungkin belum ada di row lama
+            row_kat = row["kategori"] if "kategori" in row.index else "Warga"
+            # Jika kategori adalah custom (bukan dari list), set ke "Lainnya" display
+            kat_idx = KATEGORI_LIST.index(row_kat) if row_kat in KATEGORI_LIST else KATEGORI_LIST.index("Lainnya")
+
             c1,c2 = st.columns(2)
             with c1:
-                en  = st.text_input("Nama",value=row["nama"])
-                ehp = st.text_input("No. HP",value=row["no_hp"] or "")
+                en  = st.text_input("Nama",value=row["nama"],key="edit_nama")
+                ehp = st.text_input("No. HP",value=row["no_hp"] or "",key="edit_hp")
             with c2:
-                ea  = st.text_input("Alamat",value=row["alamat"] or "")
-                er  = st.text_input("RT/RW",value=row["rt_rw"] or "")
+                ea  = st.text_input("Alamat",value=row["alamat"] or "",key="edit_alamat")
+                er  = st.text_input("RT/RW",value=row["rt_rw"] or "",key="edit_rtrw")
+
+            e_kat_sel = st.selectbox("Kategori",KATEGORI_LIST,index=kat_idx,key="edit_kat_sel")
+            if e_kat_sel == "Lainnya":
+                e_kat_custom = st.text_input("Isi Kategori (custom)",
+                                             value="" if row_kat in KATEGORI_LIST else row_kat,
+                                             placeholder="Tulis kategori...",key="edit_kat_custom")
+                e_kat = e_kat_custom.strip() if e_kat_custom.strip() else "Lainnya"
+            else:
+                e_kat = e_kat_sel
+
             b1,b2,_ = st.columns([1,1,3])
             with b1:
                 if st.button("💾 Simpan",type="primary"):
-                    db_update_penerima(pid,en,ehp,ea,er)
+                    db_update_penerima(pid,en,ehp,ea,er,e_kat)
                     st.success("Diperbarui!"); st.rerun()
             with b2:
                 if st.button("🗑️ Hapus",type="secondary"):
@@ -594,25 +666,46 @@ def page_data_penerima():
             with c2:
                 alamat = st.text_input("Alamat",placeholder="Jl. Sejahtera No. 3")
                 rt_rw  = st.text_input("RT/RW",placeholder="RT 01/RW 02")
-            if st.form_submit_button("➕ Tambah",type="primary"):
+
+            kat_sel = st.selectbox(
+                "Kategori Penerima *",
+                KATEGORI_LIST,
+                index=1,  # default: Warga
+                help="Pilih kategori penerima. Pilih 'Lainnya' untuk isi sendiri."
+            )
+            kat_custom = ""
+            if kat_sel == "Lainnya":
+                kat_custom = st.text_input("Kategori (isi sendiri)",
+                                           placeholder="Contoh: Muallaf, Dhuafa, dll.")
+            kategori = kat_custom.strip() if (kat_sel == "Lainnya" and kat_custom.strip()) else kat_sel
+
+            if st.form_submit_button("➕ Tambah Penerima",type="primary"):
                 if not nama.strip(): st.error("Nama wajib diisi!")
                 else:
-                    db_add_penerima(nama.strip(),no_hp,alamat,rt_rw)
-                    st.success(f"'{nama}' ditambahkan!"); st.rerun()
+                    db_add_penerima(nama.strip(),no_hp,alamat,rt_rw,kategori)
+                    st.success(f"✅ '{nama}' ({kategori}) berhasil ditambahkan!"); st.rerun()
 
     with tab3:
-        st.info("Format CSV: `nama, no_hp, alamat, rt_rw` (tanpa header)")
+        st.info("Format CSV: `nama, no_hp, alamat, rt_rw, kategori` (tanpa header). Kolom kategori opsional.")
         up = st.file_uploader("Upload CSV",type=["csv"])
         if up:
             try:
                 df_i = pd.read_csv(up,header=None)
-                df_i.columns=["nama","no_hp","alamat","rt_rw"][:len(df_i.columns)]
+                all_cols = ["nama","no_hp","alamat","rt_rw","kategori"]
+                df_i.columns = all_cols[:len(df_i.columns)]
+                if "kategori" not in df_i.columns:
+                    df_i["kategori"] = "Warga"
                 st.dataframe(df_i,hide_index=True)
                 if st.button("✅ Import",type="primary"):
                     for _,r in df_i.iterrows():
-                        db_add_penerima(str(r.get("nama","")).strip(),
-                                        str(r.get("no_hp","")),str(r.get("alamat","")),str(r.get("rt_rw","")))
-                    st.success(f"{len(df_i)} penerima diimport!"); st.rerun()
+                        db_add_penerima(
+                            str(r.get("nama","")).strip(),
+                            str(r.get("no_hp","")),
+                            str(r.get("alamat","")),
+                            str(r.get("rt_rw","")),
+                            str(r.get("kategori","Warga"))
+                        )
+                    st.success(f"✅ {len(df_i)} penerima berhasil diimport!"); st.rerun()
             except Exception as e:
                 st.error(f"Gagal: {e}")
 
@@ -1067,9 +1160,19 @@ def sidebar():
         </div>
         """, unsafe_allow_html=True)
         st.markdown("<hr style='border-color:rgba(255,255,255,.2)'>", unsafe_allow_html=True)
-        st.markdown(f"<div style='font-size:.78rem;opacity:.8'>👤 {st.session_state.get('user_nama','Admin')}</div>",
-                    unsafe_allow_html=True)
-        if st.button("🚪 Logout",use_container_width=True,type="secondary"):
+        st.markdown(f"""
+        <div style='background:rgba(255,255,255,.1);border-radius:10px;
+                    padding:.6rem .8rem;margin-bottom:.5rem;
+                    border:1px solid rgba(255,255,255,.2)'>
+            <div style='font-size:.7rem;opacity:.7;text-transform:uppercase;letter-spacing:.06em'>
+                Logged in as
+            </div>
+            <div style='font-size:.9rem;font-weight:700;margin-top:2px'>
+                👤 {st.session_state.get('user_nama','Admin')}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("🚪  Logout", use_container_width=True, type="secondary", key="btn_logout"):
             st.session_state.clear(); st.rerun()
     return menu
 
