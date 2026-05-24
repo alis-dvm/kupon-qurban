@@ -108,32 +108,53 @@ html,body,[class*="css"]{font-family:'Plus Jakarta Sans',sans-serif!important}
 .scan-id{font-size:1.8rem;font-weight:800;color:#0D47A1;letter-spacing:.05em;
   font-family:monospace}
 
-#MainMenu,footer,header{visibility:hidden}
-.stButton>button{border-radius:8px!important;font-weight:600!important}
+/* Sembunyikan elemen Streamlit default */
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+/* Sembunyikan header bar KECUALI tombol collapse sidebar */
+[data-testid="stHeader"] {background: transparent !important; height: 2.5rem !important;}
+[data-testid="stToolbar"] {display: none !important;}
+[data-testid="stDecoration"] {display: none !important;}
 
-/* ── FIX 2: Sidebar collapse/expand toggle button ── */
-[data-testid="collapsedControl"]{
-  background:#1565C0!important;
-  border-radius:0 8px 8px 0!important;
-  border:2px solid rgba(255,255,255,.4)!important;
-  color:white!important;
-  width:2rem!important;
-  display:flex!important;
-  align-items:center!important;
-  justify-content:center!important;
+/* ── Tombol collapse sidebar (chevron « di dalam sidebar saat terbuka) ── */
+[data-testid="stSidebarCollapseButton"] > button {
+  background: rgba(255,255,255,.15) !important;
+  border: 1.5px solid rgba(255,255,255,.4) !important;
+  border-radius: 8px !important;
+  color: white !important;
+  transition: all .2s !important;
 }
-[data-testid="collapsedControl"]:hover{
-  background:#0D47A1!important;
-  border-color:white!important;
+[data-testid="stSidebarCollapseButton"] > button:hover {
+  background: rgba(255,255,255,.3) !important;
+  border-color: white !important;
 }
-[data-testid="collapsedControl"] svg{stroke:white!important;fill:white!important}
-button[kind="header"]{
-  background:rgba(255,255,255,.15)!important;
-  border-radius:8px!important;
-  border:1px solid rgba(255,255,255,.3)!important;
+[data-testid="stSidebarCollapseButton"] > button svg {
+  stroke: white !important; fill: none !important;
 }
-button[kind="header"]:hover{background:rgba(255,255,255,.3)!important}
-button[kind="header"] svg{color:white!important;stroke:white!important}
+
+/* ── Tombol expand sidebar (» muncul di tepi kiri saat sidebar ditutup) ── */
+[data-testid="collapsedControl"] {
+  background: linear-gradient(135deg,#1565C0,#1976D2) !important;
+  border: 2px solid rgba(255,255,255,.7) !important;
+  border-left: none !important;
+  border-radius: 0 10px 10px 0 !important;
+  box-shadow: 3px 2px 10px rgba(0,0,0,.3) !important;
+  cursor: pointer !important;
+  pointer-events: all !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  z-index: 99999 !important;
+}
+[data-testid="collapsedControl"]:hover {
+  background: linear-gradient(135deg,#0D47A1,#1565C0) !important;
+  border-color: white !important;
+  box-shadow: 4px 2px 14px rgba(0,0,0,.4) !important;
+}
+[data-testid="collapsedControl"] svg {
+  stroke: white !important; fill: none !important;
+}
+
+.stButton>button{border-radius:8px!important;font-weight:600!important}
 
 /* ── FIX 3: Logout button — jelas & mencolok ── */
 [data-testid="stSidebar"] .stButton>button{
@@ -275,19 +296,23 @@ def db_get_all_kupon():
         FROM kupon k JOIN penerima p ON k.penerima_id=p.id ORDER BY k.id
     """, get_conn())
     # Pisah diambil_at → tgl_pengambilan & jam_pengambilan
-    def _split(val):
-        import math
-        # Handle None, NaN, 'None', empty string
-        if val is None or (isinstance(val, float) and math.isnan(val)):
-            return '-', '-'
-        s = str(val).strip()
-        if not s or s == 'None':
-            return '-', '-'
-        p = s.split(' ')
-        return p[0], p[1][:5] if len(p) > 1 else '-'
-    df[['tgl_pengambilan', 'jam_pengambilan']] = df['diambil_at'].apply(
-        lambda v: pd.Series(_split(v))
-    )
+    # Gunakan loop eksplisit — lebih stabil di semua versi pandas/Python
+    import math
+    tgl_list, jam_list = [], []
+    for val in df['diambil_at']:
+        try:
+            if val is None or (isinstance(val, float) and math.isnan(val)):
+                tgl_list.append('-'); jam_list.append('-'); continue
+            s = str(val).strip()
+            if not s or s in ('None', 'nan'):
+                tgl_list.append('-'); jam_list.append('-'); continue
+            parts = s.split(' ')
+            tgl_list.append(parts[0])
+            jam_list.append(parts[1][:5] if len(parts) > 1 else '-')
+        except Exception:
+            tgl_list.append('-'); jam_list.append('-')
+    df['tgl_pengambilan'] = tgl_list
+    df['jam_pengambilan'] = jam_list
     return df
 
 def db_get_kupon_by_id(id_kupon):
@@ -1212,11 +1237,81 @@ def sidebar():
     return menu
 
 
+def _inject_sidebar_toggle():
+    """
+    Inject tombol toggle sidebar custom via JavaScript.
+    Tombol floating ini mengklik tombol Streamlit asli secara programatik,
+    sehingga toggle sidebar benar-benar berfungsi dua arah (buka & tutup).
+    """
+    st.markdown("""
+    <script>
+    (function() {
+        function injectToggleBtn() {
+            // Cek apakah sudah ada tombol custom kita
+            if (document.getElementById('custom-sidebar-toggle')) return;
+
+            // Buat tombol floating custom
+            var btn = document.createElement('button');
+            btn.id = 'custom-sidebar-toggle';
+            btn.innerHTML = '&#9776;'; // ☰ hamburger icon
+            btn.title = 'Buka / Tutup Sidebar';
+            btn.style.cssText = [
+                'position:fixed', 'top:0.6rem', 'left:0.5rem',
+                'z-index:9999999', 'width:2.4rem', 'height:2.4rem',
+                'background:linear-gradient(135deg,#1565C0,#1976D2)',
+                'color:white', 'border:2px solid rgba(255,255,255,0.7)',
+                'border-radius:8px', 'cursor:pointer',
+                'font-size:1.2rem', 'line-height:1',
+                'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
+                'display:flex', 'align-items:center', 'justify-content:center',
+                'transition:all 0.2s ease', 'outline:none'
+            ].join(';');
+
+            btn.addEventListener('mouseenter', function() {
+                this.style.background = 'linear-gradient(135deg,#0D47A1,#1565C0)';
+                this.style.transform = 'scale(1.08)';
+            });
+            btn.addEventListener('mouseleave', function() {
+                this.style.background = 'linear-gradient(135deg,#1565C0,#1976D2)';
+                this.style.transform = 'scale(1)';
+            });
+
+            btn.addEventListener('click', function() {
+                // Coba klik tombol collapse Streamlit (saat sidebar terbuka)
+                var collapseBtn = document.querySelector('[data-testid="stSidebarCollapseButton"] button');
+                // Coba klik tombol expand Streamlit (saat sidebar tertutup)
+                var expandBtn   = document.querySelector('[data-testid="collapsedControl"]');
+
+                if (collapseBtn && collapseBtn.offsetParent !== null) {
+                    collapseBtn.click();
+                } else if (expandBtn) {
+                    expandBtn.click();
+                }
+            });
+
+            document.body.appendChild(btn);
+        }
+
+        // Jalankan setelah DOM siap dan setiap kali ada perubahan (Streamlit re-render)
+        if (document.readyState === 'complete') {
+            injectToggleBtn();
+        } else {
+            window.addEventListener('load', injectToggleBtn);
+        }
+        // Observer untuk Streamlit re-render
+        var observer = new MutationObserver(function() { injectToggleBtn(); });
+        observer.observe(document.body, { childList: true, subtree: false });
+    })();
+    </script>
+    """, unsafe_allow_html=True)
+
+
 def main():
     init_db()
     if not st.session_state.get("logged_in"):
         page_login(); return
 
+    _inject_sidebar_toggle()
     menu = sidebar()
     if   "Dashboard"    in menu: page_dashboard()
     elif "Penerima"     in menu: page_data_penerima()
