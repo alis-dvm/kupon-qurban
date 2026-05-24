@@ -2,9 +2,9 @@
 ## Mushollah Ar Rohman — Perum BRI, Cepu
 
 Aplikasi web berbasis **Streamlit** untuk mengelola kupon pengambilan daging qurban secara digital.
-Dilengkapi 3 metode scan QR Code, kategori penerima, validasi petugas, log aktivitas, dan laporan otomatis.
+Dilengkapi 3 metode scan QR Code, kategori penerima, jam pengambilan, validasi petugas, log aktivitas, dan laporan otomatis.
 
-**Versi saat ini: `v2.3.0`**
+**Versi saat ini: `v2.5.0`**
 
 ---
 
@@ -16,7 +16,7 @@ pip install -r requirements.txt
 ```
 
 > ✅ **Tidak perlu `sudo` atau instalasi sistem apapun.**
-> Fitur Foto QR menggunakan OpenCV yang otomatis terinstall via pip.
+> Fitur Foto QR menggunakan OpenCV yang terinstall otomatis via pip.
 
 ### 2. Jalankan aplikasi
 ```bash
@@ -41,11 +41,11 @@ Buka browser di: **http://localhost:8501**
 
 | No | Menu | Fungsi |
 |----|------|--------|
-| 1 | **🏠 Dashboard** | Statistik real-time, progress bar pengambilan, 10 aktivitas terakhir, log scan terbaru |
+| 1 | **🏠 Dashboard** | Statistik real-time, progress bar, 10 pengambilan terakhir (+ tanggal & jam), log scan terbaru |
 | 2 | **👥 Data Penerima** | Tambah manual dengan kategori, edit, hapus, import massal via CSV |
 | 3 | **🎫 Generate Kupon** | Buat kupon digital otomatis 1 klik untuk semua penerima |
-| 4 | **📋 Data Kupon** | Lihat semua kupon, filter status, download QR Code & gambar kupon siap cetak |
-| 5 | **📷 Validasi / Scan** | 3 metode scan QR → konfirmasi pengambilan → status otomatis terupdate |
+| 4 | **📋 Data Kupon** | Lihat daftar, filter, kolom **Tgl Pengambilan** & **Jam** terpisah, download QR & gambar kupon |
+| 5 | **📷 Validasi / Scan** | 3 metode scan QR → konfirmasi pengambilan → status & waktu otomatis terupdate |
 | 6 | **📊 Laporan** | Ringkasan statistik, export CSV, log semua aktivitas scan |
 | 7 | **⚙️ Pengaturan** | Ganti password admin, info status library scanner |
 
@@ -62,7 +62,26 @@ Setiap penerima dapat diberi salah satu kategori berikut:
 | **Panitia** | Anggota panitia qurban |
 | **Lainnya** | Kategori custom — bisa diisi bebas (contoh: Muallaf, Dhuafa, dll.) |
 
-Kategori tampil di tabel daftar penerima, form tambah, form edit, dan kolom CSV.
+Kategori tampil di: tabel daftar penerima, form tambah, form edit, tabel data kupon, dan kolom CSV.
+
+---
+
+## 🕐 Kolom Jam Pengambilan
+
+Waktu pengambilan (`diambil_at`) ditampilkan secara **terpisah** di seluruh UI:
+
+| Tampilan | Format |
+|----------|--------|
+| **Tgl Pengambilan** | `2026-05-24` |
+| **Jam** | `22:56` (WIB) |
+
+Diterapkan di:
+- Tabel **Data Kupon** — kolom Tgl Pengambilan + Jam
+- **Card detail kupon** — 📅 Tanggal dan 🕐 Jam WIB
+- **Popup validasi scan** — saat kupon sudah diambil
+- **Dashboard** — kolom Tanggal + Jam di tabel "10 Pengambilan Terakhir"
+
+> Kupon yang **belum diambil** menampilkan `—` di kolom Tgl & Jam (tidak error).
 
 ---
 
@@ -93,23 +112,24 @@ Kategori tampil di tabel daftar penerima, form tambah, form edit, dan kolom CSV.
 1. Login Admin
         ↓
 2. Input Data Penerima
-   → Tambah manual satu per satu (dengan kategori)
+   → Tambah manual satu per satu (isi nama, HP, alamat, RT/RW, kategori)
    → atau Import CSV massal (kolom kategori opsional)
         ↓
 3. Generate Kupon
    → Klik "Generate Kupon Sekarang"
-   → Sistem membuat 1 kupon per penerima secara otomatis
+   → Sistem membuat 1 kupon per penerima secara otomatis (format QBN-YYYY-XXXX)
         ↓
 4. Bagikan Kupon ke Penerima
    → Download gambar kupon (siap cetak / kirim digital via WhatsApp)
         ↓
 5. Hari Pembagian — Buka menu Validasi / Scan
+   → Isi nama petugas
    → Pilih metode: Scan Live / Foto / Manual
    → Sistem tampilkan data & status kupon
    → Klik "Konfirmasi Pengambilan"
         ↓
 6. Status otomatis berubah: Baru Dibuat → Sudah Diambil ✅
-   → Tercatat di log: waktu, petugas, metode scan
+   → Tercatat di log: tanggal, jam, petugas, metode scan
 ```
 
 ---
@@ -154,7 +174,7 @@ Setiap aktivitas scan tersimpan otomatis di tabel `log_scan`:
 | `status_sesudah` | Status setelah aksi dilakukan |
 | `petugas` | Nama petugas yang melakukan aksi |
 | `metode` | `scan-live` / `scan-foto` / `manual` |
-| `waktu` | Timestamp otomatis (datetime lokal) |
+| `waktu` | Timestamp otomatis — tanggal & jam (datetime lokal) |
 | `catatan` | Catatan opsional dari petugas |
 
 Log bisa dilihat dan diexport CSV di menu **Laporan → Log Scan**.
@@ -165,14 +185,14 @@ Log bisa dilihat dan diexport CSV di menu **Laporan → Log Scan**.
 
 Menggunakan **SQLite** (`qurban_arrohman.db`) — file lokal, tidak perlu server atau koneksi internet.
 
-| Tabel | Keterangan |
-|-------|-----------|
-| `users` | Akun admin (username, password hash, role) |
-| `penerima` | Data penerima kupon (nama, HP, alamat, RT/RW, **kategori**) |
-| `kupon` | Kupon digital dengan status pengambilan |
-| `log_scan` | Riwayat semua aktivitas validasi/scan |
+| Tabel | Kolom Utama | Keterangan |
+|-------|-------------|-----------|
+| `users` | username, password, role | Akun admin |
+| `penerima` | nama, no_hp, alamat, rt_rw, **kategori** | Data penerima kupon |
+| `kupon` | id_kupon, penerima_id, status, **diambil_at**, diambil_oleh | Kupon digital |
+| `log_scan` | id_kupon, aksi, petugas, metode, waktu | Riwayat aktivitas scan |
 
-> Migrasi kolom `kategori` berjalan **otomatis** saat aplikasi pertama kali dijalankan. Data lama tidak hilang.
+> Migrasi kolom `kategori` berjalan **otomatis** saat aplikasi dijalankan. Data lama tidak hilang.
 
 ---
 
@@ -198,6 +218,7 @@ Menggunakan **SQLite** (`qurban_arrohman.db`) — file lokal, tidak perlu server
 - Jika scan gagal 2× berturut-turut, alihkan ke **Input Manual**
 - Nama petugas otomatis terisi dari nama akun yang login
 - Tombol **Logout** berwarna merah saat hover — klik jika selesai bertugas
+- Sidebar bisa dilipat dengan klik tombol **‹** dan dibuka kembali dengan klik tombol **›** di tepi kiri layar
 
 ---
 
@@ -212,72 +233,98 @@ yang terinstall otomatis via `pip install -r requirements.txt` tanpa perlu sudo.
 
 ## 📜 Changelog
 
+### v2.5.0 — 25 Mei 2026
+**Revisi Sidebar Toggle & Tambah Jam Pengambilan**
+
+- 🐛 **[Fix]** Tombol expand sidebar (panah **›**) tidak bisa diklik setelah sidebar dilipat
+  - **Root cause:** CSS `header{visibility:hidden}` menyembunyikan seluruh elemen header termasuk tombol toggle
+  - **Solusi:** Ganti pendekatan — hide elemen header secara spesifik (`stToolbar`, `stDecoration`, `stStatusWidget`); header dibuat transparan & tinggi 0 tapi tetap ada di DOM
+  - Tombol expand `[data-testid="collapsedControl"]` kini `position:fixed` dengan `z-index:999999` — selalu tampil & bisa diklik
+  - Hover effect: tombol melebar sedikit + shadow lebih dalam sebagai feedback visual
+  - Tombol collapse (chevron di dalam sidebar) juga diberi style putih transparan yang konsisten
+- ✨ **[Baru]** Kolom **Jam Pengambilan** tampil terpisah dari tanggal di seluruh UI
+  - `diambil_at` (format `2026-05-24 22:56:12`) dipecah menjadi **Tgl Pengambilan** + **Jam** (HH:MM)
+  - Diterapkan di: tabel Data Kupon, card detail kupon, popup validasi scan, tabel Dashboard "10 Pengambilan Terakhir"
+  - Kupon belum diambil: kolom Tgl & Jam tampil `—` (tidak error, guard NaN/NULL)
+- 🔧 **[Ubah]** Fungsi `db_get_all_kupon()` kini otomatis menambah kolom `tgl_pengambilan` & `jam_pengambilan`
+
+---
+
+### v2.4.0 — 25 Mei 2026 *(digabung ke v2.5.0)*
+
+> Versi ini tidak dirilis tersendiri; perubahan dikerjakan bersamaan dengan v2.5.0.
+
+---
+
 ### v2.3.0 — 24 Mei 2026
-**Revisi UI Sidebar & Tambah Kategori Penerima**
-- ✨ **[Baru]** Field **Kategori Penerima** di Data Penerima
-  - Pilihan: Shohibul Qurban, Warga, Panitia, Lainnya
-  - Jika pilih "Lainnya" → muncul field teks untuk isi kategori sendiri (custom)
-  - Tampil di tabel daftar, form tambah, form edit, dan kolom CSV
-  - Migrasi database otomatis — data lama tidak hilang
-- 🐛 **[Fix]** Sidebar toggle button (panah collapse/expand) kini terlihat jelas
-  - Diberi warna biru dengan border putih; hover menjadi biru tua
-  - Bisa diklik untuk **membuka kembali** sidebar setelah ditutup
+**Kategori Penerima & Perbaikan UI Sidebar/Logout**
+
+- ✨ **[Baru]** Field **Kategori Penerima** di menu Data Penerima
+  - Pilihan: `Shohibul Qurban`, `Warga`, `Panitia`, `Lainnya`
+  - Pilih "Lainnya" → muncul field teks untuk isi kategori custom (contoh: Muallaf, Dhuafa)
+  - Tampil di tabel daftar penerima, form tambah, form edit, tabel Data Kupon, dan kolom CSV
+  - Migrasi kolom `kategori` berjalan otomatis — data lama tidak hilang
+- 🐛 **[Fix]** Sidebar toggle button (panah collapse) diberi warna & border agar terlihat jelas *(disempurnakan di v2.5.0)*
 - 🐛 **[Fix]** Tombol Logout kini terlihat jelas dan mencolok
-  - Kotak info user (nama + label "Logged in as") di atas tombol logout
+  - Kotak info "Logged in as + nama user" di atas tombol
   - Tombol dengan border putih; hover berubah **merah** sebagai sinyal keluar
 - ✨ **[Baru]** Kolom `kategori` ikut tampil di tabel Data Kupon
 
 ---
 
 ### v2.2.0 — 24 Mei 2026
-**Perbaikan Bug Dashboard**
-- 🐛 **[Fix]** Error DeltaGenerator muncul di bawah tulisan "Belum ada" di Dashboard
-  - Penyebab: ternary expression `st.X() if cond else st.Y()` mengembalikan objek DeltaGenerator
-  - Solusi: diganti ke blok `if/else` biasa pada bagian "10 Pengambilan Terakhir" dan "Log Scan Terbaru"
+**Perbaikan Bug Dashboard (DeltaGenerator)**
+
+- 🐛 **[Fix]** Blok debug `DeltaGenerator(...)` muncul di bawah tulisan "Belum ada" di Dashboard
+  - **Root cause:** ternary expression `st.dataframe() if cond else st.info()` mengembalikan objek `DeltaGenerator` yang ikut dirender
+  - **Solusi:** Ganti ke blok `if/else` biasa di bagian "10 Pengambilan Terakhir" dan "Log Scan Terbaru"
 
 ---
 
 ### v2.1.0 — 24 Mei 2026
 **Hapus Ketergantungan `sudo`**
-- 🔧 **[Ubah]** Ganti `pyzbar` (butuh `sudo apt install libzbar0`) → **OpenCV** sebagai decoder QR utama
-  - `pyzbar` tetap sebagai fallback opsional jika sudah terinstall
-  - Decode QR foto kini otomatis mencoba 2× (normal + gambar diperbesar 2×) untuk akurasi lebih baik
-- 🔧 **[Ubah]** `requirements.txt` diperbarui: tambah `opencv-python-headless`, hapus `pyzbar` dari wajib
-- 📝 **[Docs]** README ditambah catatan "sudo is disabled" dan panduan install yang lebih jelas
+
+- 🔧 **[Ubah]** Ganti `pyzbar` (butuh `sudo apt install libzbar0`) → **OpenCV** sebagai decoder QR foto utama
+  - `pyzbar` dipertahankan sebagai fallback opsional jika sudah terinstall
+  - Decode QR foto kini mencoba 2× (normal + diperbesar 2×) untuk akurasi lebih baik pada QR kecil
+- 🔧 **[Ubah]** `requirements.txt`: tambah `opencv-python-headless`, pindah `pyzbar` ke komentar opsional
+- 📝 **[Docs]** README ditambah seksi "Catatan: sudo is disabled" dan langkah install yang lebih ringkas
 
 ---
 
 ### v2.0.0 — 23 Mei 2026
 **Fitur Scan QR Code & Log Aktivitas**
+
 - ✨ **[Baru]** Menu **Validasi / Scan** dengan 3 metode:
   - 🎥 **Scan Live** — real-time via `streamlit-qrcode-scanner`
-  - 📸 **Foto QR** — ambil foto kamera → decode otomatis via `pyzbar`
-  - ⌨️ **Input Manual** — ketik ID Kupon + shortcut dropdown belum diambil
+  - 📸 **Foto QR** — ambil foto → decode otomatis via `pyzbar`
+  - ⌨️ **Input Manual** — ketik ID Kupon + shortcut dropdown daftar belum diambil
 - ✨ **[Baru]** Tabel `log_scan` — rekam semua aksi KONFIRMASI & RESET beserta metode, petugas, waktu
-- ✨ **[Baru]** Tab **Log Scan** di menu Laporan — bisa filter by metode & export CSV
+- ✨ **[Baru]** Tab **Log Scan** di menu Laporan — filter by metode, export CSV
 - ✨ **[Baru]** Dashboard: panel "Log Scan Terbaru" (10 log terakhir)
-- ✨ **[Baru]** Fungsi `_render_kupon_detail_and_confirm()` — shared helper antar semua tab scan
+- ✨ **[Baru]** Helper `_render_kupon_detail_and_confirm()` — digunakan bersama antar semua tab scan
 - ✨ **[Baru]** Scan result box — tampilan ID kupon terdeteksi yang jelas & berwarna
-- 🔧 **[Ubah]** `db_konfirmasi()` & `db_reset_kupon()` kini otomatis catat ke `log_scan`
-- 🎨 **[UI]** CSS tambahan: `.scan-box`, `.scan-result-box`, `.scan-id`, `.alert-info`
-- 📝 **[Docs]** README diperbarui dengan panduan 3 metode scan dan tabel log_scan
+- 🔧 **[Ubah]** `db_konfirmasi()` & `db_reset_kupon()` otomatis catat ke `log_scan`
+- 🎨 **[UI]** CSS: `.scan-box`, `.scan-result-box`, `.scan-id`, `.alert-info`
+- 📝 **[Docs]** README diperbarui lengkap: 3 metode scan, tabel log_scan, alur penggunaan
 
 ---
 
 ### v1.0.0 — 23 Mei 2026
 **Rilis Pertama**
-- ✨ **[Baru]** Sistem login admin dengan autentikasi password (SHA-256 hash)
-- ✨ **[Baru]** Menu **Dashboard** — statistik: total penerima, kupon, sudah/belum diambil, progress bar
-- ✨ **[Baru]** Menu **Data Penerima** — tambah manual, edit, hapus, import CSV
-- ✨ **[Baru]** Menu **Generate Kupon** — buat kupon otomatis format `QBN-YYYY-XXXX`
-- ✨ **[Baru]** Menu **Data Kupon** — lihat daftar, filter, download QR Code & gambar kupon
-- ✨ **[Baru]** Gambar kupon siap cetak (680×380px) dengan nama, ID, dan QR Code berwarna
-- ✨ **[Baru]** Menu **Validasi** — input manual ID Kupon → konfirmasi pengambilan
-- ✨ **[Baru]** Menu **Laporan** — ringkasan & export CSV
-- ✨ **[Baru]** Menu **Pengaturan** — ganti password admin
-- ✨ **[Baru]** Database SQLite lokal (`qurban_arrohman.db`) — 3 tabel: users, penerima, kupon
-- 🎨 **[UI]** Desain sidebar biru gradien, metric cards warna-warni, badge status
-- 📝 **[Docs]** README awal dengan panduan instalasi dan alur penggunaan
+
+- ✨ **[Baru]** Login admin dengan autentikasi SHA-256
+- ✨ **[Baru]** Dashboard — statistik total penerima, kupon, sudah/belum diambil, progress bar
+- ✨ **[Baru]** Data Penerima — tambah manual, edit, hapus, import CSV
+- ✨ **[Baru]** Generate Kupon — format `QBN-YYYY-XXXX`, otomatis 1 kupon/penerima
+- ✨ **[Baru]** Data Kupon — lihat daftar, filter, download QR Code & gambar kupon siap cetak
+- ✨ **[Baru]** Gambar kupon (680×380px) dengan nama penerima, ID, dan QR Code berwarna
+- ✨ **[Baru]** Validasi — input manual ID Kupon → konfirmasi pengambilan
+- ✨ **[Baru]** Laporan — ringkasan & export CSV
+- ✨ **[Baru]** Pengaturan — ganti password admin
+- ✨ **[Baru]** Database SQLite lokal (`qurban_arrohman.db`) — tabel: users, penerima, kupon
+- 🎨 **[UI]** Sidebar biru gradien, metric cards warna-warni, badge status Baru/Sudah Diambil
+- 📝 **[Docs]** README awal: instalasi, alur, format kupon
 
 ---
 
@@ -287,6 +334,7 @@ yang terinstall otomatis via `pip install -r requirements.txt` tanpa perlu sudo.
 |---|---|
 | **Mushollah** | Ar Rohman |
 | **Lokasi** | Perum BRI, Cepu |
-| **Versi** | 2.3.0 |
-| **Database** | SQLite (lokal) |
+| **Versi** | 2.5.0 |
+| **Database** | SQLite (lokal, `qurban_arrohman.db`) |
 | **Framework** | Streamlit |
+| **Bahasa** | Python 3.10+ |

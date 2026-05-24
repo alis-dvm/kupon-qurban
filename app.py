@@ -267,13 +267,28 @@ def db_generate_all_kupon():
     return len(pending)
 
 def db_get_all_kupon():
-    return pd.read_sql_query("""
+    df = pd.read_sql_query("""
         SELECT k.id,k.id_kupon,p.nama AS penerima,
                COALESCE(p.kategori,'Warga') AS kategori,
                p.no_hp,p.alamat,p.rt_rw,
                k.status,k.created_at,k.diambil_at,k.diambil_oleh,k.catatan
         FROM kupon k JOIN penerima p ON k.penerima_id=p.id ORDER BY k.id
     """, get_conn())
+    # Pisah diambil_at → tgl_pengambilan & jam_pengambilan
+    def _split(val):
+        import math
+        # Handle None, NaN, 'None', empty string
+        if val is None or (isinstance(val, float) and math.isnan(val)):
+            return '-', '-'
+        s = str(val).strip()
+        if not s or s == 'None':
+            return '-', '-'
+        p = s.split(' ')
+        return p[0], p[1][:5] if len(p) > 1 else '-'
+    df[['tgl_pengambilan', 'jam_pengambilan']] = df['diambil_at'].apply(
+        lambda v: pd.Series(_split(v))
+    )
+    return df
 
 def db_get_kupon_by_id(id_kupon):
     return get_conn().execute("""
@@ -573,8 +588,10 @@ def page_dashboard():
     with cl2:
         st.markdown("### 🕐 10 Pengambilan Terakhir")
         df = pd.read_sql_query("""
-            SELECT k.id_kupon AS "ID", p.nama AS "Penerima",
-                   k.diambil_at AS "Waktu", k.diambil_oleh AS "Petugas"
+            SELECT k.id_kupon AS "ID Kupon", p.nama AS "Penerima",
+                   SUBSTR(k.diambil_at,1,10) AS "Tanggal",
+                   SUBSTR(k.diambil_at,12,5) AS "Jam",
+                   k.diambil_oleh AS "Petugas"
             FROM kupon k JOIN penerima p ON k.penerima_id=p.id
             WHERE k.status='Sudah Diambil' ORDER BY k.diambil_at DESC LIMIT 10
         """, get_conn())
@@ -775,10 +792,17 @@ def page_data_kupon():
     if fs!="Semua": filt = filt[filt["status"]==fs]
 
     st.markdown(f"**{len(filt)} dari {len(df)} kupon**")
-    st.dataframe(filt[["id_kupon","penerima","no_hp","alamat","status","created_at","diambil_at","diambil_oleh"]].rename(
-        columns={"id_kupon":"ID Kupon","penerima":"Penerima","no_hp":"No. HP","alamat":"Alamat",
-                 "status":"Status","created_at":"Dibuat","diambil_at":"Diambil","diambil_oleh":"Petugas"}
-    ), use_container_width=True, hide_index=True)
+    cols_show = ["id_kupon","penerima","kategori","no_hp","alamat","status",
+                 "tgl_pengambilan","jam_pengambilan","diambil_oleh"]
+    rename_map = {
+        "id_kupon":"ID Kupon","penerima":"Penerima","kategori":"Kategori",
+        "no_hp":"No. HP","alamat":"Alamat","status":"Status",
+        "tgl_pengambilan":"Tgl Pengambilan","jam_pengambilan":"Jam",
+        "diambil_oleh":"Petugas"
+    }
+    cols_exist = [c for c in cols_show if c in filt.columns]
+    st.dataframe(filt[cols_exist].rename(columns=rename_map),
+                 use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 🖨️ Lihat & Cetak Kupon")
@@ -804,8 +828,19 @@ def page_data_kupon():
           <div style="color:#90A4AE;font-size:.78rem">Dibuat: {created_at}</div>
         </div>""", unsafe_allow_html=True)
         if status=="Sudah Diambil":
-            st.markdown(f'<div class="alert-success">✅ Diambil: {diambil_at} | 👤 {diambil_oleh}</div>',
-                        unsafe_allow_html=True)
+            if diambil_at and str(diambil_at).strip() not in ('', 'None'):
+                _parts = str(diambil_at).strip().split(' ')
+                _tgl = _parts[0] if len(_parts)>=1 else '-'
+                _jam = _parts[1][:5] if len(_parts)>=2 else '-'
+            else:
+                _tgl, _jam = '-', '-'
+            st.markdown(f"""
+            <div class="alert-success">
+                ✅ <b>Sudah Diambil</b><br>
+                📅 Tanggal : {_tgl}<br>
+                🕐 Jam     : {_jam} WIB<br>
+                👤 Petugas : {diambil_oleh or '-'}
+            </div>""", unsafe_allow_html=True)
         kupon_img = make_kupon_image(id_k, nama)
         c1,c2 = st.columns(2)
         with c1:
