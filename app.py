@@ -524,7 +524,10 @@ def page_dashboard():
             FROM kupon k JOIN penerima p ON k.penerima_id=p.id
             WHERE k.status='Sudah Diambil' ORDER BY k.diambil_at DESC LIMIT 10
         """, get_conn())
-        st.dataframe(df,use_container_width=True,hide_index=True) if not df.empty else st.info("Belum ada.")
+        if df.empty:
+            st.info("Belum ada pengambilan.")
+        else:
+            st.dataframe(df, use_container_width=True, hide_index=True)
 
     with cr2:
         st.markdown("### 📡 Log Scan Terbaru")
@@ -533,7 +536,10 @@ def page_dashboard():
                    metode AS "Metode", waktu AS "Waktu"
             FROM log_scan ORDER BY id DESC LIMIT 10
         """, get_conn())
-        st.dataframe(df2,use_container_width=True,hide_index=True) if not df2.empty else st.info("Belum ada log.")
+        if df2.empty:
+            st.info("Belum ada log.")
+        else:
+            st.dataframe(df2, use_container_width=True, hide_index=True)
 
 
 # ═══════════════════════════════════════════════════════════════
