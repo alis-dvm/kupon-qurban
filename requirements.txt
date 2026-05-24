@@ -2,3 +2,9 @@ streamlit>=1.32.0
 qrcode[pil]>=7.4.2
 Pillow>=10.0.0
 pandas>=2.0.0
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+streamlit-qrcode-scanner>=0.0.4
+
+# OPSIONAL — hanya install jika sudo tersedia:
+# pyzbar>=0.1.9  (butuh: sudo apt install libzbar0)
